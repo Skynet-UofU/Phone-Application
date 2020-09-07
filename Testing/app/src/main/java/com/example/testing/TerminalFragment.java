@@ -28,11 +28,42 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Dictionary;
+import java.util.Enumeration;
+import java.util.Hashtable;
+import java.util.Set;
+import java.util.concurrent.Semaphore;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.crypto.Cipher;
 
 public class TerminalFragment extends Fragment implements ServiceConnection, SerialListener {
+
+    private class Loc {
+
+        private double lat;
+        private double lon;
+        private int id;
+        public Loc() {
+
+        }
+        public Loc(int gps_id, double _lat, double _lon) {
+            lat = _lat;
+            lon = _lon;
+            id = gps_id;
+        }
+    }
+
+    private static String begginningGPS = "GPS_DATA:";
+    private static String endingGPS = "Done:";
+    private static String messageEnd = "End::";
+    private static String messageStart = "START::";
+
+    private Semaphore send_sem = new Semaphore(1);
+    private Semaphore receive_sem = new Semaphore(1);
 
     private enum Connected { False, Pending, True }
 
@@ -51,6 +82,9 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     private Aes256Class aes256Class;
     private byte[] receivedBytes;
     private int receivedBytesIndex = 0;
+    private int myID = 3;
+
+    private Hashtable<String, Loc> locations;
 
 
     /*
@@ -64,6 +98,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         deviceAddress = getArguments().getString("device");
         aes256Class = new Aes256Class();
         receivedBytes = new byte[256];
+        locations = new Hashtable<String, Loc>();
     }
 
     @Override
@@ -184,8 +219,66 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             });
             builder.create().show();
             return true;
+        } else if( id == R.id.map) {
+            AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
+            builder.setTitle("Locations");
+            String location_string = "";
+            Set<String> keys = locations.keySet();
+            for(String key : keys)
+            {
+                location_string += key + ": " + locations.get(key).lat + ", " + locations.get(key).lon + "\r\n";
+            }
+            builder.setMessage(location_string);
+            builder.create().show();
+            return true;
         } else {
             return super.onOptionsItemSelected(item);
+        }
+    }
+
+    private void updateCenterLocation() {
+        Set<String> keys = locations.keySet();
+        double total_lat = 0;
+        double total_lon = 0;
+        for(String key : keys)
+        {
+            if(!key.equals("Center")) {
+                total_lat += locations.get(key).lat;
+                total_lon += locations.get(key).lon;
+            }
+        }
+        int count = keys.size() - (keys.contains("Center") ? 1 : 0);
+        Loc loc = new Loc(-1,total_lat/count, total_lon/count);
+        locations.put("Center", loc);
+    }
+
+    private void updateLocations(Loc loc) {
+        locations.put(loc.id + "", loc);
+        updateCenterLocation();
+    }
+
+    public void sendGPS(double lat, double lon)
+    {
+        if(connected != Connected.True) {
+            return;
+        }
+        try {
+            Loc loc = new Loc(myID, lat, lon);
+            locations.put("My location", loc);
+            updateCenterLocation();
+            String str = begginningGPS + myID + "," + lat + "," + lon + endingGPS;
+            SpannableStringBuilder spn = new SpannableStringBuilder(str+'\n');
+            spn.setSpan(new ForegroundColorSpan(getResources().getColor(R.color.colorSendText)), 0, spn.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+//            byte[] data = (str + newline).getBytes();
+            byte target = 2;
+            //byte[] data = aes256Class.makeAes((str).getBytes(), Cipher.ENCRYPT_MODE);
+            byte[] data = str.getBytes();
+            send_sem.acquire();
+            socket.write(data);
+            send_sem.release();
+        } catch (Exception e) {
+            onSerialIoError(e);
+            send_sem.release();
         }
     }
 
@@ -216,22 +309,55 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
 
     private byte[] sendProtocol(String originalMessage, byte target) {
         //add who it is to be sent to
-        String appendedTarget = "" + target + originalMessage;
+        String appendedTarget = messageStart + /*target +*/ originalMessage + messageEnd;
         //uncomment below to enable encryption
         //byte[] temp = aes256Class.makeAes((appendedTarget).getBytes(), Cipher.ENCRYPT_MODE);
         byte[] temp = appendedTarget.getBytes();
-        byte[] retBytes = new byte[2 + temp.length];
+        //The commented code below was to append the target before the message, mostly for encryption purposes
+        /*byte[] retBytes = new byte[2 + temp.length];
         retBytes[0] = target;
         retBytes[1] = ' ';
-        System.arraycopy(temp, 0, retBytes, 2, temp.length);
-        return retBytes;
+        System.arraycopy(temp, 0, retBytes, 2, temp.length);*/
+        return temp;
     }
 
     private String receiveProtocol(byte[] receivedMessage) {
-        byte target = receivedMessage[0];
         byte id = 2;
-        if(target == id)
+        byte[] possible_gps = new byte[receivedMessage.length];
+        System.arraycopy(receivedMessage, 0, possible_gps, 0, possible_gps.length);
+        String gps_data = new String(possible_gps);
+        Pattern gps_pattern = Pattern.compile(begginningGPS +"(.*?)" + endingGPS);
+        Matcher matcher = gps_pattern.matcher(gps_data);
+        Pattern message_pattern = Pattern.compile(messageStart + "(.*?)" + messageEnd);
+        Matcher message_matcher = message_pattern.matcher(gps_data);
+        if(matcher.find())
         {
+            String location_data = matcher.group(1);
+            String[] words = location_data.split(",");
+            int gps_id = Integer.parseInt(words[0]);
+            double lat = Double.parseDouble(words[1]);
+            double lon = Double.parseDouble(words[2]);
+            Loc loc = new Loc(gps_id, lat, lon);
+            updateLocations(loc);
+            while((matcher = gps_pattern.matcher(gps_data)).find())
+            {
+                String removal = begginningGPS + location_data + endingGPS;
+                gps_data = gps_data.replace(removal,"");
+            }
+            if(receive_sem.tryAcquire()) {
+                System.arraycopy(gps_data.getBytes(), 0, receivedMessage, 0, gps_data.getBytes().length);
+                receive_sem.release();
+                receivedBytesIndex = gps_data.length();
+            }
+            else {
+                receivedBytesIndex = 0;
+            }
+            return "";
+        }
+        else if(message_matcher.find())
+        {
+
+            String message = message_matcher.group(1).replace(messageStart, "").replace(messageEnd,"");
             //encrypted code
             //byte[] encryptedData = new byte[receivedMessage.length - 2];
             //System.arraycopy(receivedMessage, 2, encryptedData, 0, encryptedData.length);
@@ -239,16 +365,18 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             //encryption code done
 
             //non-encrypted code
-            byte[] data = new byte[receivedMessage.length - 2];
-            System.arraycopy(receivedMessage, 2, data, 0, data.length);
+            //byte[] data = new byte[receivedMessage.length - 2];
+            //System.arraycopy(receivedMessage, 2, data, 0, data.length);
             //non-encrypted code done
 
+            byte[] data = message.getBytes();
             String decryptedString = new String(data);
             //TODO fix the sendProtocol so it doesn't do this to make comparisons easier
-            String changeTarget = "" + target;
-            if(decryptedString.charAt(0) == changeTarget.charAt(0)) {
-                return decryptedString.substring(1);
-            }
+            //String changeTarget = "" + target;
+            //if(decryptedString.charAt(0) == changeTarget.charAt(0)) {
+                receivedBytesIndex = 0;
+                return decryptedString;//.substring(1);
+            //}
         }
         return null;
     }
@@ -268,16 +396,22 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             //byte[] data = aes256Class.makeAes((str).getBytes(), Cipher.ENCRYPT_MODE);
             byte[] data = sendProtocol(str, target);
             lastSent = data;
+            send_sem.acquire();
             socket.write(data);
             sendText.setText("");
+            send_sem.release();
         } catch (Exception e) {
             onSerialIoError(e);
+            send_sem.release();
         }
     }
 
     private void receive(byte[] data) {
-        System.arraycopy(data, 0, receivedBytes, receivedBytesIndex, data.length);
-        receivedBytesIndex += data.length;
+        if(receive_sem.tryAcquire()) {
+            System.arraycopy(data, 0, receivedBytes, receivedBytesIndex, data.length);
+            receivedBytesIndex += data.length;
+            receive_sem.release();
+        }
         byte[] encryptedData = new byte[receivedBytesIndex];
         System.arraycopy(receivedBytes, 0, encryptedData, 0, receivedBytesIndex);
 
@@ -286,10 +420,9 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             String temp = receiveProtocol(encryptedData);
             //if you have successfully decrypted the data, reset the index
             receiveText.append(temp);
-            receivedBytesIndex = 0;
         } catch(Exception e) {
             //Do nothing, we have only received part of the message and need the whole message to decrypt it properly.
-
+            receive_sem.release();
         }
     }
 

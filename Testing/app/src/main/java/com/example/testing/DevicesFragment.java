@@ -30,6 +30,7 @@ public class DevicesFragment extends ListFragment {
     private ArrayList<BluetoothDevice> scannedItems = new ArrayList<>();
     private ArrayAdapter<BluetoothDevice> listAdapter;
     private final static int REQUEST_DISCOVERABLE_BT = 41;
+    private TerminalFragment fragment;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -50,6 +51,14 @@ public class DevicesFragment extends ListFragment {
                 return view;
             }
         };
+    }
+
+    public void sendGPS(double lat, double lon)
+    {
+        if(fragment != null)
+        {
+            fragment.sendGPS(lat, lon);
+        }
     }
 
     @Override
@@ -133,7 +142,7 @@ public class DevicesFragment extends ListFragment {
         BluetoothDevice device = listItems.get(position-1);
         Bundle args = new Bundle();
         args.putString("device", device.getAddress());
-        Fragment fragment = new TerminalFragment();
+        fragment = new TerminalFragment();
         fragment.setArguments(args);
         getFragmentManager().beginTransaction().replace(R.id.fragment, fragment, "terminal").addToBackStack(null).commit();
     }

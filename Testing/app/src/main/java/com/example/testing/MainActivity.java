@@ -132,6 +132,7 @@ public class MainActivity extends AppCompatActivity implements FragmentManager.O
             @Override
             public void onLocationChanged(Location location) {
                 //TextView loc = findViewById(R.id.location);
+                sendGPS(location.getLatitude(), location.getLongitude());
                 //loc.setText(location.getLatitude() + ", " + location.getLongitude());
             }
 
@@ -182,6 +183,11 @@ public class MainActivity extends AppCompatActivity implements FragmentManager.O
             //checkPairedDevices();
         }
 
+    }
+
+    public void sendGPS(double lat, double lon)
+    {
+        devicesFragment.sendGPS(lat, lon);
     }
 
     @Override
