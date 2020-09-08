@@ -6,6 +6,7 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.os.Bundle;
@@ -20,6 +21,7 @@ import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -46,11 +48,11 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
 
         private double lat;
         private double lon;
-        private int id;
+        private String id;
         public Loc() {
 
         }
-        public Loc(int gps_id, double _lat, double _lon) {
+        public Loc(String gps_id, double _lat, double _lon) {
             lat = _lat;
             lon = _lon;
             id = gps_id;
@@ -59,8 +61,8 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
 
     private static String begginningGPS = "GPS_DATA:";
     private static String endingGPS = "Done:";
-    private static String messageEnd = "End::";
-    private static String messageStart = "START::";
+    private static String messageEnd = "End:";
+    private static String messageStart = "START:";
 
     private Semaphore send_sem = new Semaphore(1);
     private Semaphore receive_sem = new Semaphore(1);
@@ -82,7 +84,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     private Aes256Class aes256Class;
     private byte[] receivedBytes;
     private int receivedBytesIndex = 0;
-    private int myID = 3;
+    private String myID = "Bob";
 
     private Hashtable<String, Loc> locations;
 
@@ -97,7 +99,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         setRetainInstance(true);
         deviceAddress = getArguments().getString("device");
         aes256Class = new Aes256Class();
-        receivedBytes = new byte[256];
+        receivedBytes = new byte[1024];
         locations = new Hashtable<String, Loc>();
     }
 
@@ -219,7 +221,9 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             });
             builder.create().show();
             return true;
-        } else if( id == R.id.map) {
+        } /*else if(id == R.id.messageIndividual) {
+
+        } */else if( id == R.id.map) {
             AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
             builder.setTitle("Locations");
             String location_string = "";
@@ -248,7 +252,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             }
         }
         int count = keys.size() - (keys.contains("Center") ? 1 : 0);
-        Loc loc = new Loc(-1,total_lat/count, total_lon/count);
+        Loc loc = new Loc("-1",total_lat/count, total_lon/count);
         locations.put("Center", loc);
     }
 
@@ -270,7 +274,6 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             SpannableStringBuilder spn = new SpannableStringBuilder(str+'\n');
             spn.setSpan(new ForegroundColorSpan(getResources().getColor(R.color.colorSendText)), 0, spn.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
 //            byte[] data = (str + newline).getBytes();
-            byte target = 2;
             //byte[] data = aes256Class.makeAes((str).getBytes(), Cipher.ENCRYPT_MODE);
             byte[] data = str.getBytes();
             send_sem.acquire();
@@ -287,6 +290,19 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
      */
     private void connect() {
         try {
+            //Temporary way to save a name so others can see who is sending it.
+            //Make this saveable and put in the opening of the app for the first time.
+            AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
+            builder.setTitle("Enter your name below.");
+            final EditText input = new EditText(getContext());
+            builder.setView(input);
+            builder.setPositiveButton("Ok", new DialogInterface.OnClickListener() {
+                public void onClick(DialogInterface dialog, int whichButton) {
+                    myID = input.getText().toString();
+                    // Do something with value!
+                }
+            });
+            builder.show();
             BluetoothAdapter bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
             BluetoothDevice device = bluetoothAdapter.getRemoteDevice(deviceAddress);
             String deviceName = device.getName() != null ? device.getName() : device.getAddress();
@@ -307,9 +323,9 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         socket = null;
     }
 
-    private byte[] sendProtocol(String originalMessage, byte target) {
+    private byte[] sendProtocol(String originalMessage, String target) {
         //add who it is to be sent to
-        String appendedTarget = messageStart + /*target +*/ originalMessage + messageEnd;
+        String appendedTarget = messageStart + myID + ":" + target + ":" +  originalMessage + messageEnd;
         //uncomment below to enable encryption
         //byte[] temp = aes256Class.makeAes((appendedTarget).getBytes(), Cipher.ENCRYPT_MODE);
         byte[] temp = appendedTarget.getBytes();
@@ -322,7 +338,6 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     }
 
     private String receiveProtocol(byte[] receivedMessage) {
-        byte id = 2;
         byte[] possible_gps = new byte[receivedMessage.length];
         System.arraycopy(receivedMessage, 0, possible_gps, 0, possible_gps.length);
         String gps_data = new String(possible_gps);
@@ -334,7 +349,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         {
             String location_data = matcher.group(1);
             String[] words = location_data.split(",");
-            int gps_id = Integer.parseInt(words[0]);
+            String gps_id = words[0];
             double lat = Double.parseDouble(words[1]);
             double lon = Double.parseDouble(words[2]);
             Loc loc = new Loc(gps_id, lat, lon);
@@ -358,6 +373,10 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         {
 
             String message = message_matcher.group(1).replace(messageStart, "").replace(messageEnd,"");
+            String sender = message.substring(0, message.indexOf(':'));
+            String afterSender = message.substring(message.indexOf(':') + 1);
+            String target = afterSender.substring(0, afterSender.indexOf(':'));
+            message = afterSender.substring(afterSender.indexOf(':') + 1);
             //encrypted code
             //byte[] encryptedData = new byte[receivedMessage.length - 2];
             //System.arraycopy(receivedMessage, 2, encryptedData, 0, encryptedData.length);
@@ -370,13 +389,13 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             //non-encrypted code done
 
             byte[] data = message.getBytes();
-            String decryptedString = new String(data);
+            String decryptedString = sender + ": " + new String(data);
             //TODO fix the sendProtocol so it doesn't do this to make comparisons easier
             //String changeTarget = "" + target;
-            //if(decryptedString.charAt(0) == changeTarget.charAt(0)) {
+            if(target.equals("" + myID) || target.equals("-1")) {
                 receivedBytesIndex = 0;
                 return decryptedString;//.substring(1);
-            //}
+            }
         }
         return null;
     }
@@ -390,9 +409,10 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         try {
             SpannableStringBuilder spn = new SpannableStringBuilder(str+'\n');
             spn.setSpan(new ForegroundColorSpan(getResources().getColor(R.color.colorSendText)), 0, spn.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            receiveText.append("\r\n");
             receiveText.append(spn);
 //            byte[] data = (str + newline).getBytes();
-            byte target = 2;
+            String target = "-1";
             //byte[] data = aes256Class.makeAes((str).getBytes(), Cipher.ENCRYPT_MODE);
             byte[] data = sendProtocol(str, target);
             lastSent = data;
