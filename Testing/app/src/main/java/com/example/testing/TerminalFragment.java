@@ -285,6 +285,17 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         }
     }
 
+    private void forwardMessage(byte[] message) {
+        try {
+            send_sem.acquire();
+            socket.write(message);
+            send_sem.release();
+        } catch (Exception e) {
+            onSerialIoError(e);
+            send_sem.release();
+        }
+    }
+
     /*
      * Serial + UI
      */
@@ -354,7 +365,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             double lon = Double.parseDouble(words[2]);
             Loc loc = new Loc(gps_id, lat, lon);
             updateLocations(loc);
-            while((matcher = gps_pattern.matcher(gps_data)).find())
+            while((gps_pattern.matcher(gps_data)).find())
             {
                 String removal = begginningGPS + location_data + endingGPS;
                 gps_data = gps_data.replace(removal,"");
@@ -367,12 +378,16 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             else {
                 receivedBytesIndex = 0;
             }
+            if(!myID.equals(gps_id))
+            {
+                forwardMessage(location_data.getBytes());
+            }
             return "";
         }
         else if(message_matcher.find())
         {
-
-            String message = message_matcher.group(1).replace(messageStart, "").replace(messageEnd,"");
+            String original_message = message_matcher.group(1);
+            String message = original_message.replace(messageStart, "").replace(messageEnd,"");
             String sender = message.substring(0, message.indexOf(':'));
             String afterSender = message.substring(message.indexOf(':') + 1);
             String target = afterSender.substring(0, afterSender.indexOf(':'));
@@ -392,6 +407,9 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             String decryptedString = sender + ": " + new String(data);
             //TODO fix the sendProtocol so it doesn't do this to make comparisons easier
             //String changeTarget = "" + target;
+            if(!myID.equals(sender)) {
+                forwardMessage(original_message.getBytes());
+            }
             if(target.equals("" + myID) || target.equals("-1")) {
                 receivedBytesIndex = 0;
                 return decryptedString;//.substring(1);
