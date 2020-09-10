@@ -85,6 +85,9 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     private byte[] receivedBytes;
     private int receivedBytesIndex = 0;
     private String myID = "Bob";
+    private final String allTargets = "-1";
+    private String myTarget = allTargets;
+
 
     private Hashtable<String, Loc> locations;
 
@@ -182,7 +185,16 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             @Override
             public void onClick(View v)
             {
-                send("ew");
+                AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
+                builder.setTitle("Enter your target below.");
+                final EditText input = new EditText(getContext());
+                builder.setView(input);
+                builder.setPositiveButton("Ok", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int whichButton) {
+                        myTarget = input.getText().toString();
+                    }
+                });
+                builder.show();
             }
         });
         ImageButton test_two_button = (ImageButton) view.findViewById(R.id.test_2);
@@ -191,7 +203,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             @Override
             public void onClick(View v)
             {
-                send("dw");
+                myTarget = allTargets;
             }
         });
 
@@ -252,6 +264,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             }
         }
         int count = keys.size() - (keys.contains("Center") ? 1 : 0);
+        //Give the Center a dummy value for its id
         Loc loc = new Loc("-1",total_lat/count, total_lon/count);
         locations.put("Center", loc);
     }
@@ -365,8 +378,10 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             double lon = Double.parseDouble(words[2]);
             Loc loc = new Loc(gps_id, lat, lon);
             updateLocations(loc);
-            while((gps_pattern.matcher(gps_data)).find())
+            //remove the processed data
+            if((matcher = gps_pattern.matcher(gps_data)).find())
             {
+                location_data = matcher.group(1);
                 String removal = begginningGPS + location_data + endingGPS;
                 gps_data = gps_data.replace(removal,"");
             }
@@ -380,13 +395,14 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             }
             if(!myID.equals(gps_id))
             {
-                forwardMessage(location_data.getBytes());
+                forwardMessage((begginningGPS + location_data + endingGPS).getBytes());
             }
             return "";
         }
         else if(message_matcher.find())
         {
             String original_message = message_matcher.group(1);
+            //This replace actually seems to be useless. I may refactor the code to remove this.
             String message = original_message.replace(messageStart, "").replace(messageEnd,"");
             String sender = message.substring(0, message.indexOf(':'));
             String afterSender = message.substring(message.indexOf(':') + 1);
@@ -407,12 +423,27 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             String decryptedString = sender + ": " + new String(data);
             //TODO fix the sendProtocol so it doesn't do this to make comparisons easier
             //String changeTarget = "" + target;
-            if(!myID.equals(sender)) {
-                forwardMessage(original_message.getBytes());
+            //remove the processed data
+            if((message_matcher = message_pattern.matcher(gps_data)).find())
+            {
+                String middle = message_matcher.group(1);
+                String removal = messageStart + middle + messageEnd;
+                gps_data = gps_data.replace(removal,"");
             }
-            if(target.equals("" + myID) || target.equals("-1")) {
+            if(receive_sem.tryAcquire()) {
+                System.arraycopy(gps_data.getBytes(), 0, receivedMessage, 0, gps_data.getBytes().length);
+                receive_sem.release();
+                receivedBytesIndex = gps_data.length();
+            }
+            else {
                 receivedBytesIndex = 0;
-                return decryptedString;//.substring(1);
+            }
+
+            if(!sender.contains(myID)) {
+                forwardMessage((messageStart + original_message.replace(sender, sender + "," + myID) + messageEnd).getBytes());
+            }
+            if(target.equals("" + myID) || target.equals(allTargets)) {
+                return decryptedString;
             }
         }
         return null;
@@ -427,12 +458,10 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         try {
             SpannableStringBuilder spn = new SpannableStringBuilder(str+'\n');
             spn.setSpan(new ForegroundColorSpan(getResources().getColor(R.color.colorSendText)), 0, spn.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-            receiveText.append("\r\n");
             receiveText.append(spn);
 //            byte[] data = (str + newline).getBytes();
-            String target = "-1";
             //byte[] data = aes256Class.makeAes((str).getBytes(), Cipher.ENCRYPT_MODE);
-            byte[] data = sendProtocol(str, target);
+            byte[] data = sendProtocol(str, myTarget);
             lastSent = data;
             send_sem.acquire();
             socket.write(data);
