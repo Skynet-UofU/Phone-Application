@@ -63,6 +63,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     private static String endingGPS = "Done:";
     private static String messageEnd = "End:";
     private static String messageStart = "START:";
+    private static int MAXKEPT = 1000;
 
     private Semaphore send_sem = new Semaphore(1);
     private Semaphore receive_sem = new Semaphore(1);
@@ -90,6 +91,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
 
 
     private Hashtable<String, Loc> locations;
+    private Hashtable<String, ArrayList<String>> timestamps;
 
 
     /*
@@ -104,6 +106,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         aes256Class = new Aes256Class();
         receivedBytes = new byte[1024];
         locations = new Hashtable<String, Loc>();
+        timestamps = new Hashtable<String, ArrayList<String>>();
     }
 
     @Override
@@ -349,7 +352,9 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
 
     private byte[] sendProtocol(String originalMessage, String target) {
         //add who it is to be sent to
-        String appendedTarget = messageStart + myID + ":" + target + ":" +  originalMessage + messageEnd;
+        Long tsLong = System.currentTimeMillis();
+        String ts = tsLong.toString();
+        String appendedTarget = messageStart + myID + "/" + ts +  ":" + target + ":" +  originalMessage + messageEnd;
         //uncomment below to enable encryption
         //byte[] temp = aes256Class.makeAes((appendedTarget).getBytes(), Cipher.ENCRYPT_MODE);
         byte[] temp = appendedTarget.getBytes();
@@ -420,7 +425,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             //non-encrypted code done
 
             byte[] data = message.getBytes();
-            String decryptedString = sender + ": " + new String(data);
+            String decryptedString = sender.split("/")[0] + ": " + new String(data);
             //TODO fix the sendProtocol so it doesn't do this to make comparisons easier
             //String changeTarget = "" + target;
             //remove the processed data
@@ -439,14 +444,39 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
                 receivedBytesIndex = 0;
             }
 
-            if(!sender.contains(myID)) {
+            if(!sender.contains(myID) && !target.equals("" + myID)) {
                 forwardMessage((messageStart + original_message.replace(sender, sender + "," + myID) + messageEnd).getBytes());
             }
-            if(target.equals("" + myID) || target.equals(allTargets)) {
+            if((target.equals("" + myID) || target.equals(allTargets)) && checkSender(sender.split(",")[0])) {
                 return decryptedString;
             }
         }
         return null;
+    }
+
+    private boolean checkSender(String sender) {
+        boolean newTimestamp = true;
+        String senderID = sender.split("/")[0];
+        String timestamp = sender.split("/")[1];
+        if(timestamps.containsKey(senderID)) {
+            ArrayList<String> entries = timestamps.get(senderID);
+            if(entries.contains(timestamp)) {
+                newTimestamp = false;
+            }
+            else {
+                entries.add(timestamp);
+                if(entries.size() > MAXKEPT) {
+                    entries = (ArrayList<String>)entries.subList(MAXKEPT/2,entries.size());
+                }
+                timestamps.put(senderID, entries);
+            }
+        }
+        else {
+            ArrayList<String> newEntry = new ArrayList<>();
+            newEntry.add(timestamp);
+            timestamps.put(senderID, newEntry);
+        }
+        return newTimestamp;
     }
 
     private byte[] lastSent;
