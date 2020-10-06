@@ -7,7 +7,6 @@ import androidx.core.content.ContextCompat;
 import androidx.fragment.app.FragmentManager;
 
 import android.Manifest;
-import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothServerSocket;
@@ -18,31 +17,18 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
-import android.graphics.Color;
-import android.inputmethodservice.InputMethodService;
-import android.inputmethodservice.KeyboardView;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Bundle;
 import android.util.Log;
-import android.view.KeyEvent;
-import android.view.LayoutInflater;
 import android.view.View;
-import android.view.inputmethod.EditorInfo;
-import android.widget.EditText;
 import android.widget.TextView;
-import androidx.appcompat.widget.Toolbar;
 
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
 import static android.content.ContentValues.TAG;
-import static android.provider.Settings.NameValueTable.NAME;
-import static android.view.View.VISIBLE;
 
 public class MainActivity extends AppCompatActivity implements FragmentManager.OnBackStackChangedListener {
 
@@ -296,6 +282,10 @@ public class MainActivity extends AppCompatActivity implements FragmentManager.O
             }
         }
     };
+
+    public void openMap() {
+        setContentView(R.layout.map_view);
+    }
 
 
     private class AcceptThread extends Thread {

@@ -236,16 +236,17 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         } /*else if(id == R.id.messageIndividual) {
 
         } */else if( id == R.id.map) {
-            AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
-            builder.setTitle("Locations");
-            String location_string = "";
-            Set<String> keys = locations.keySet();
-            for(String key : keys)
-            {
-                location_string += key + ": " + locations.get(key).lat + ", " + locations.get(key).lon + "\r\n";
-            }
-            builder.setMessage(location_string);
-            builder.create().show();
+//            AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
+//            builder.setTitle("Locations");
+//            String location_string = "";
+//            Set<String> keys = locations.keySet();
+//            for(String key : keys)
+//            {
+//                location_string += key + ": " + locations.get(key).lat + ", " + locations.get(key).lon + "\r\n";
+//            }
+//            builder.setMessage(location_string);
+//            builder.create().show();
+            ((MainActivity) getActivity()).openMap();
             return true;
         } else {
             return super.onOptionsItemSelected(item);
