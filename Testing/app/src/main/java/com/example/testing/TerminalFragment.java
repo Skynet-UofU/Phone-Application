@@ -9,6 +9,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.content.SharedPreferences;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -47,6 +48,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import javax.crypto.Cipher;
+
+import static android.content.Context.MODE_PRIVATE;
 
 public class TerminalFragment extends Fragment implements ServiceConnection, SerialListener {
 
@@ -100,6 +103,8 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
 
     private Hashtable<String, Loc> locations;
     private Hashtable<String, ArrayList<String>> timestamps;
+    public static final String SHARED_PREFS = "sharedPrefs";
+    public static final String NAME = "NAME";
 
 
     /*
@@ -446,17 +451,27 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         try {
             //Temporary way to save a name so others can see who is sending it.
             //Make this saveable and put in the opening of the app for the first time.
-            AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
-            builder.setTitle("Enter your name below.");
-            final EditText input = new EditText(getContext());
-            builder.setView(input);
-            builder.setPositiveButton("Ok", new DialogInterface.OnClickListener() {
-                public void onClick(DialogInterface dialog, int whichButton) {
-                    myID = input.getText().toString();
-                    // Do something with value!
-                }
-            });
-            builder.show();
+            SharedPreferences sharedPreferences = getActivity().getSharedPreferences(SHARED_PREFS,MODE_PRIVATE);
+            String name = sharedPreferences.getString(NAME, "");
+            if(name.equals("")) {
+                AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
+                builder.setTitle("Enter your name below.");
+                final EditText input = new EditText(getContext());
+                builder.setView(input);
+                builder.setPositiveButton("Ok", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int whichButton) {
+                        myID = input.getText().toString();
+                        // Do something with value!
+                        SharedPreferences.Editor editor = sharedPreferences.edit();
+                        editor.putString(NAME,myID);
+                        editor.commit();
+                    }
+                });
+                builder.show();
+
+            } else {
+                myID = name;
+            }
             BluetoothAdapter bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
             BluetoothDevice device = bluetoothAdapter.getRemoteDevice(deviceAddress);
             String deviceName = device.getName() != null ? device.getName() : device.getAddress();
