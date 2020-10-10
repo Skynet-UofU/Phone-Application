@@ -11,6 +11,7 @@ import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
 
+import java.util.ArrayList;
 import java.util.Hashtable;
 import java.util.Set;
 
@@ -28,6 +29,20 @@ public class MapView extends View {
             lat = _lat;
             lon = _lon;
             id = gps_id;
+        }
+
+        public boolean sameLoc(Loc other) {
+            return lat == other.lat && lon == other.lon;
+        }
+
+        public boolean isUnique(ArrayList<Loc> locs) {
+            boolean isUnique = true;
+            for(Loc other : locs) {
+                if(sameLoc(other)) {
+                    isUnique = false;
+                }
+            }
+            return isUnique;
         }
     }
     private Hashtable<String, Loc> locations;
@@ -50,12 +65,13 @@ public class MapView extends View {
         // and we set a new Paint with the desired attributes
         mPaint = new Paint();
         mPaint.setAntiAlias(true);
-        mPaint.setColor(Color.BLACK);
+        mPaint.setColor(Color.RED);
         mPaint.setStyle(Paint.Style.STROKE);
-        mPaint.setStrokeJoin(Paint.Join.ROUND);
-        mPaint.setStrokeWidth(6f);
+        //mPaint.setStrokeJoin(Paint.Join.ROUND);
+        mPaint.setStrokeWidth(14f);
         textPaint = new Paint();
         textPaint.setTypeface(Typeface.SANS_SERIF);
+        textPaint.setTextSize(48f);
         locations = new Hashtable<String, Loc>();
     }
 
@@ -106,19 +122,25 @@ public class MapView extends View {
             }
             i++;
         }
-        double latDistance = 0.1;
-        double lonDistance = 0.1;
+        double latDistance = 0.01;
+        double lonDistance = 0.01;
         if(latDistance < maxLat - minLat) {
             latDistance = maxLat - minLat;
         }
         if(lonDistance < maxLon - minLon) {
             lonDistance = maxLon - minLon;
         }
+        ArrayList<Loc> locs = new ArrayList();
         for(String key : loc_keys) {
-            float relLat = convertLatToRelative(locations.get(key).lat, minLat, latDistance, maxLat, mapCanvas.getHeight());
-            float relLon = convertLonToRelative(locations.get(key).lon, minLon, lonDistance, mapCanvas.getWidth());
-            mapCanvas.drawText(key,relLon,relLat-10, textPaint);
-            mapCanvas.drawPoint(relLon, relLat, mPaint);
+            Loc current = locations.get(key);
+            if(current.isUnique(locs)) {
+                locs.add(current);
+
+                float relLat = convertLatToRelative(current.lat, minLat, latDistance, maxLat, mapCanvas.getHeight());
+                float relLon = convertLonToRelative(current.lon, minLon, lonDistance, mapCanvas.getWidth());
+                mapCanvas.drawText(key,relLon,relLat-10, textPaint);
+                mapCanvas.drawPoint(relLon, relLat, mPaint);
+            }
         }
     }
 
