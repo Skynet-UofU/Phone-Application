@@ -122,14 +122,20 @@ public class MapView extends View {
             }
             i++;
         }
-        double latDistance = 0.01;
-        double lonDistance = 0.01;
+        double latDistance = 0.001;
+        double lonDistance = 0.001;
         if(latDistance < maxLat - minLat) {
             latDistance = maxLat - minLat;
         }
+        minLat -= latDistance * 0.1;
+        maxLat += latDistance * 0.1;
+        latDistance += latDistance * 0.2;
         if(lonDistance < maxLon - minLon) {
             lonDistance = maxLon - minLon;
         }
+        minLon -= lonDistance * 0.1;
+        maxLon += lonDistance * 0.1;
+        lonDistance += lonDistance * 0.2;
         ArrayList<Loc> locs = new ArrayList();
         for(String key : loc_keys) {
             Loc current = locations.get(key);
