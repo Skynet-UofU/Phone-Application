@@ -4,19 +4,21 @@
     android:id="@+id/toolbar_wrapper"
     android:layout_width="match_parent"
     android:layout_height="32dp"
-    android:background="@color/tDark"
+    android:background="@color/colorPrimaryDark"
     android:orientation="horizontal"
     android:focusable="true"
     android:focusableInTouchMode="true">
 
-    <ImageButton
+    <Button
         android:id="@+id/test_1"
         style="?android:attr/borderlessButtonStyle"
         android:layout_width="0dp"
         android:layout_height="match_parent"
         android:layout_weight="1.75"
         android:clickable="false"
-        android:contentDescription="test_1"
+        android:textColor="@color/common_google_signin_btn_text_dark"
+        android:textSize="14dp"
+        android:text="Choose recipient"
         android:focusable="false"
         android:padding="3dp"
         android:scaleType="fitCenter"
@@ -30,14 +32,16 @@
             android:layout_weight="0.2" />
 
 
-    <ImageButton
+    <Button
         android:id="@+id/test_2"
         style="?android:attr/borderlessButtonStyle"
         android:layout_width="0dp"
         android:layout_height="match_parent"
         android:layout_weight="1.75"
         android:clickable="false"
-        android:contentDescription="test_2"
+        android:textColor="@color/common_google_signin_btn_text_dark"
+        android:textSize="14dp"
+        android:text="Send to all"
         android:focusable="false"
         android:padding="3dp"
         android:scaleType="fitCenter"

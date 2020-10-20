@@ -28,6 +28,7 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
@@ -46,6 +47,7 @@ import java.util.Enumeration;
 import java.util.Hashtable;
 import java.util.Set;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -53,7 +55,7 @@ import javax.crypto.Cipher;
 
 import static android.content.Context.MODE_PRIVATE;
 
-public class TerminalFragment extends Fragment implements ServiceConnection, SerialListener {
+public class TerminalFragment extends Fragment implements  ServiceConnection, SerialListener {
 
     private class Loc {
 
@@ -122,6 +124,15 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         receivedBytes = new byte[1024];
         locations = new Hashtable<String, Loc>();
         timestamps = new Hashtable<String, ArrayList<String>>();
+
+        // This callback will only be called when MyFragment is at least Started.
+        /*OnBackPressedCallback callback = new OnBackPressedCallback(true) { //enabled by default
+            @Override
+            public void handleOnBackPressed() {
+                // Handle the back button event
+            }
+        };
+        requireActivity().getOnBackPressedDispatcher().addCallback(this, callback);*/
 
     }
 
@@ -201,7 +212,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         sendBtn.setOnClickListener(v -> send(sendText.getText().toString()));
 
 
-        ImageButton test_one_button = (ImageButton) view.findViewById(R.id.test_1);
+        Button test_one_button = (Button) view.findViewById(R.id.test_1);
         test_one_button.setOnClickListener(new View.OnClickListener()
         {
             @Override
@@ -219,7 +230,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
                 builder.show();
             }
         });
-        ImageButton test_two_button = (ImageButton) view.findViewById(R.id.test_2);
+        Button test_two_button = (Button) view.findViewById(R.id.test_2);
         test_two_button.setOnClickListener(new View.OnClickListener()
         {
             @Override
@@ -534,13 +545,17 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
                 String removal = begginningGPS + location_data + endingGPS;
                 gps_data = gps_data.replace(removal,"");
             }
-            if(receive_sem.tryAcquire()) {
+            try {
+            if(receive_sem.tryAcquire(1, TimeUnit.SECONDS)) {
                 System.arraycopy(gps_data.getBytes(), 0, receivedMessage, 0, gps_data.getBytes().length);
                 receive_sem.release();
                 receivedBytesIndex = gps_data.length();
             }
             else {
                 receivedBytesIndex = 0;
+                receive_sem.release();
+            } } catch(Exception e) {
+                receive_sem.release();
             }
             if(!myID.equals(gps_id))
             {
@@ -579,20 +594,24 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
                 String removal = messageStart + middle + messageEnd;
                 gps_data = gps_data.replace(removal,"");
             }
-            if(receive_sem.tryAcquire()) {
+            try {
+            if(receive_sem.tryAcquire(1, TimeUnit.SECONDS)) {
                 System.arraycopy(gps_data.getBytes(), 0, receivedMessage, 0, gps_data.getBytes().length);
                 receive_sem.release();
                 receivedBytesIndex = gps_data.length();
             }
             else {
                 receivedBytesIndex = 0;
+                receive_sem.release();
+            } } catch (Exception e) {
+                receive_sem.release();
             }
 
             if(!sender.contains(myID) && !target.equals("" + myID)) {
                 forwardMessage((messageStart + original_message.replace(sender, sender + "," + myID) + messageEnd).getBytes());
             }
             if((target.equals("" + myID) || target.equals(allTargets)) && checkSender(sender.split(",")[0])) {
-                return decryptedString;
+                return decryptedString.trim() + "\n"; //make sure to append exactly one newline
             }
         }
         return null;
@@ -648,9 +667,13 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     }
 
     private void receive(byte[] data) {
-        if(receive_sem.tryAcquire()) {
-            System.arraycopy(data, 0, receivedBytes, receivedBytesIndex, data.length);
-            receivedBytesIndex += data.length;
+        try {
+            if (receive_sem.tryAcquire(1, TimeUnit.SECONDS)) {
+                System.arraycopy(data, 0, receivedBytes, receivedBytesIndex, data.length);
+                receivedBytesIndex += data.length;
+                receive_sem.release();
+            }
+        } catch(Exception e) {
             receive_sem.release();
         }
         byte[] encryptedData = new byte[receivedBytesIndex];
