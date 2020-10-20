@@ -109,7 +109,9 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
     private Hashtable<String, ArrayList<String>> timestamps;
     public static final String SHARED_PREFS = "sharedPrefs";
     public static final String NAME = "NAME";
-
+    private static final String TEXT = "TEXT";
+    private Hashtable<String, Boolean> confirmStrings;
+    private Thread checkConfirmation;
 
     /*
      * Lifecycle
@@ -124,6 +126,40 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
         receivedBytes = new byte[1024];
         locations = new Hashtable<String, Loc>();
         timestamps = new Hashtable<String, ArrayList<String>>();
+        confirmStrings = new Hashtable<String, Boolean>();
+        checkConfirmation = new Thread(new Runnable() {
+            public void run() {
+                Hashtable<String, Integer> counts = new Hashtable<String, Integer>();
+                while(true) {
+                    try {
+                        for(Hashtable.Entry<String, Boolean> entry : confirmStrings.entrySet()) {
+                            if(!entry.getValue()) {
+                                //Note this isn't amazing because the target could change within the 5 seconds. Find a better solution if we keep this.
+                                forwardMessage(sendProtocol(entry.getKey(), myTarget));
+                                if(counts.containsKey(entry.getKey())) {
+                                    int val = counts.get(entry.getKey()) + 1;
+                                    counts.put(entry.getKey(), val);
+                                    if(val > 5) {
+                                        counts.remove(entry.getKey());
+                                        confirmStrings.put(entry.getKey(), true);
+                                    }
+                                } else {
+                                    counts.put(entry.getKey(), 1);
+                                }
+
+                            }
+                            else {
+                                confirmStrings.remove(entry.getKey());
+                            }
+                        }
+                        checkConfirmation.sleep(1000);
+                    } catch (Exception e) {
+
+                    }
+                }
+            }
+        });
+        checkConfirmation.start();
 
         // This callback will only be called when MyFragment is at least Started.
         /*OnBackPressedCallback callback = new OnBackPressedCallback(true) { //enabled by default
@@ -133,7 +169,23 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
             }
         };
         requireActivity().getOnBackPressedDispatcher().addCallback(this, callback);*/
+    }
 
+    //Possible feature to add, needs some work to make it more useful and better looking.
+    private void loadText() {
+        SharedPreferences sharedPreferences = getActivity().getSharedPreferences(SHARED_PREFS,MODE_PRIVATE);
+        String text = sharedPreferences.getString(TEXT, "");
+        receiveText.setTextColor(getResources().getColor(R.color.colorStatusText)); // set as default color to reduce number of spans
+        receiveText.setText(text);
+        receiveText.setTextColor(getResources().getColor(R.color.colorRecieveText)); // set as default color to reduce number of spans
+    }
+
+    //Possible feature to add, needs some work to make it more useful and better looking.
+    private void saveText() {
+        SharedPreferences sharedPreferences = getActivity().getSharedPreferences(SHARED_PREFS,MODE_PRIVATE);
+        SharedPreferences.Editor editor = sharedPreferences.edit();
+        editor.putString(TEXT,receiveText.getText().toString());
+        editor.commit();
     }
 
     @Override
@@ -141,6 +193,7 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
         if (connected != Connected.False)
             disconnect();
         getActivity().stopService(new Intent(getActivity(), SerialService.class));
+        //saveText();
         super.onDestroy();
     }
 
@@ -206,6 +259,7 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
         mapView.setVisibility(View.INVISIBLE);
         receiveText = view.findViewById(R.id.receive_text);
         receiveText.setTextColor(getResources().getColor(R.color.colorRecieveText)); // set as default color to reduce number of spans
+        //loadText();
         receiveText.setMovementMethod(ScrollingMovementMethod.getInstance());
         sendText = view.findViewById(R.id.send_text);
         View sendBtn = view.findViewById(R.id.send_btn);
@@ -518,6 +572,7 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
         retBytes[0] = target;
         retBytes[1] = ' ';
         System.arraycopy(temp, 0, retBytes, 2, temp.length);*/
+        confirmStrings.put(originalMessage, false);
         return temp;
     }
 
@@ -610,6 +665,9 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
             if(!sender.contains(myID) && !target.equals("" + myID)) {
                 forwardMessage((messageStart + original_message.replace(sender, sender + "," + myID) + messageEnd).getBytes());
             }
+            else if(sender.contains(myID)) {
+                confirmStrings.put(new String(data), true);
+            }
             if((target.equals("" + myID) || target.equals(allTargets)) && checkSender(sender.split(",")[0])) {
                 return decryptedString.trim() + "\n"; //make sure to append exactly one newline
             }
@@ -649,6 +707,7 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
             return;
         }
         try {
+
             SpannableStringBuilder spn = new SpannableStringBuilder(str+'\n');
             spn.setSpan(new ForegroundColorSpan(getResources().getColor(R.color.colorSendText)), 0, spn.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
             receiveText.append(spn);
