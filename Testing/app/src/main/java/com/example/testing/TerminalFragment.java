@@ -9,6 +9,12 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.content.SharedPreferences;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.text.Spannable;
@@ -21,8 +27,12 @@ import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageButton;
+import android.widget.LinearLayout;
+import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -37,12 +47,15 @@ import java.util.Enumeration;
 import java.util.Hashtable;
 import java.util.Set;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import javax.crypto.Cipher;
 
-public class TerminalFragment extends Fragment implements ServiceConnection, SerialListener {
+import static android.content.Context.MODE_PRIVATE;
+
+public class TerminalFragment extends Fragment implements  ServiceConnection, SerialListener {
 
     private class Loc {
 
@@ -64,6 +77,8 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     private static String messageEnd = "End:";
     private static String messageStart = "START:";
     private static int MAXKEPT = 1000;
+
+    private MapView mapView;
 
     private Semaphore send_sem = new Semaphore(1);
     private Semaphore receive_sem = new Semaphore(1);
@@ -92,7 +107,11 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
 
     private Hashtable<String, Loc> locations;
     private Hashtable<String, ArrayList<String>> timestamps;
-
+    public static final String SHARED_PREFS = "sharedPrefs";
+    public static final String NAME = "NAME";
+    private static final String TEXT = "TEXT";
+    private Hashtable<String, Boolean> confirmStrings;
+    private Thread checkConfirmation;
 
     /*
      * Lifecycle
@@ -107,6 +126,66 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         receivedBytes = new byte[1024];
         locations = new Hashtable<String, Loc>();
         timestamps = new Hashtable<String, ArrayList<String>>();
+        confirmStrings = new Hashtable<String, Boolean>();
+        checkConfirmation = new Thread(new Runnable() {
+            public void run() {
+                Hashtable<String, Integer> counts = new Hashtable<String, Integer>();
+                while(true) {
+                    try {
+                        for(Hashtable.Entry<String, Boolean> entry : confirmStrings.entrySet()) {
+                            if(!entry.getValue()) {
+                                //Note this isn't amazing because the target could change within the 5 seconds. Find a better solution if we keep this.
+                                forwardMessage(sendProtocol(entry.getKey(), myTarget));
+                                if(counts.containsKey(entry.getKey())) {
+                                    int val = counts.get(entry.getKey()) + 1;
+                                    counts.put(entry.getKey(), val);
+                                    if(val > 5) {
+                                        counts.remove(entry.getKey());
+                                        confirmStrings.put(entry.getKey(), true);
+                                    }
+                                } else {
+                                    counts.put(entry.getKey(), 1);
+                                }
+
+                            }
+                            else {
+                                confirmStrings.remove(entry.getKey());
+                            }
+                        }
+                        checkConfirmation.sleep(1000);
+                    } catch (Exception e) {
+
+                    }
+                }
+            }
+        });
+        checkConfirmation.start();
+
+        // This callback will only be called when MyFragment is at least Started.
+        /*OnBackPressedCallback callback = new OnBackPressedCallback(true) { //enabled by default
+            @Override
+            public void handleOnBackPressed() {
+                // Handle the back button event
+            }
+        };
+        requireActivity().getOnBackPressedDispatcher().addCallback(this, callback);*/
+    }
+
+    //Possible feature to add, needs some work to make it more useful and better looking.
+    private void loadText() {
+        SharedPreferences sharedPreferences = getActivity().getSharedPreferences(SHARED_PREFS,MODE_PRIVATE);
+        String text = sharedPreferences.getString(TEXT, "");
+        receiveText.setTextColor(getResources().getColor(R.color.colorStatusText)); // set as default color to reduce number of spans
+        receiveText.setText(text);
+        receiveText.setTextColor(getResources().getColor(R.color.colorRecieveText)); // set as default color to reduce number of spans
+    }
+
+    //Possible feature to add, needs some work to make it more useful and better looking.
+    private void saveText() {
+        SharedPreferences sharedPreferences = getActivity().getSharedPreferences(SHARED_PREFS,MODE_PRIVATE);
+        SharedPreferences.Editor editor = sharedPreferences.edit();
+        editor.putString(TEXT,receiveText.getText().toString());
+        editor.commit();
     }
 
     @Override
@@ -114,6 +193,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         if (connected != Connected.False)
             disconnect();
         getActivity().stopService(new Intent(getActivity(), SerialService.class));
+        //saveText();
         super.onDestroy();
     }
 
@@ -175,14 +255,18 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_terminal, container, false);
-        receiveText = view.findViewById(R.id.receive_text);                          // TextView performance decreases with number of spans
+        mapView = (MapView) view.findViewById(R.id.mapView);
+        mapView.setVisibility(View.INVISIBLE);
+        receiveText = view.findViewById(R.id.receive_text);
         receiveText.setTextColor(getResources().getColor(R.color.colorRecieveText)); // set as default color to reduce number of spans
+        //loadText();
         receiveText.setMovementMethod(ScrollingMovementMethod.getInstance());
         sendText = view.findViewById(R.id.send_text);
         View sendBtn = view.findViewById(R.id.send_btn);
         sendBtn.setOnClickListener(v -> send(sendText.getText().toString()));
 
-        ImageButton test_one_button = (ImageButton) view.findViewById(R.id.test_1);
+
+        Button test_one_button = (Button) view.findViewById(R.id.test_1);
         test_one_button.setOnClickListener(new View.OnClickListener()
         {
             @Override
@@ -200,7 +284,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
                 builder.show();
             }
         });
-        ImageButton test_two_button = (ImageButton) view.findViewById(R.id.test_2);
+        Button test_two_button = (Button) view.findViewById(R.id.test_2);
         test_two_button.setOnClickListener(new View.OnClickListener()
         {
             @Override
@@ -213,9 +297,77 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         return view;
     }
 
+    private float convertToRelative(double point, double min, double range) {
+        return (float)((point - min)/range * 1000);
+    }
+
+    private void convertLocationToPoint() {
+        Canvas mapCanvas = new Canvas();
+        Set<String> loc_keys = locations.keySet();
+        //float[] points = new float[loc_keys.size() * 2];
+        Paint myPaint = new Paint();
+        myPaint.setColor(Color.BLACK);
+        myPaint.setStyle(Paint.Style.STROKE);
+        myPaint.setStrokeJoin(Paint.Join.ROUND);
+        myPaint.setStrokeWidth(4f);
+        double[] lats = new double[loc_keys.size()];
+        double[] lons = new double[loc_keys.size()];
+        int i = 0;
+        double minLat = 90;
+        double maxLat = -90;
+        double minLon = 180;
+        double maxLon = -180;
+        for(String key : loc_keys) {
+            lats[i] = locations.get(key).lat;
+            lons[i] = locations.get(key).lon;
+            if(minLat > lats[i] ) {
+                minLat = lats[i];
+            }
+            if(maxLat < lats[i]) {
+                maxLat = lats[i];
+            }
+            if(minLon > lons[i]) {
+                minLon = lons[i];
+            }
+            if(maxLon < lons[i]) {
+                maxLon = lons[i];
+            }
+            i++;
+        }
+        double latDistance = 0.1;
+        double lonDistance = 0.1;
+        if(latDistance < maxLat - minLat) {
+            latDistance = maxLat - minLat;
+        }
+        if(lonDistance < maxLon - minLon) {
+            lonDistance = maxLon - minLon;
+        }
+        for(String key : loc_keys) {
+            float relLat = convertToRelative(locations.get(key).lat, minLat, latDistance);
+            float relLon = convertToRelative(locations.get(key).lon, minLon, lonDistance);
+            mapCanvas.drawText(key,relLat,relLon+3, myPaint);
+            mapCanvas.drawPoint(relLat, relLon, myPaint);
+        }
+        //getLayoutInflater().inflate(R.id.map, mapCanvas.);
+        //getLayoutInflater().inflate
+    }
+
     @Override
     public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
         inflater.inflate(R.menu.menu_terminal, menu);
+    }
+    
+    private boolean isConnected() {
+        boolean connected;
+        ConnectivityManager connectivityManager = (ConnectivityManager)getActivity().getSystemService(Context.CONNECTIVITY_SERVICE);
+        if(connectivityManager.getNetworkInfo(ConnectivityManager.TYPE_MOBILE).getState() == NetworkInfo.State.CONNECTED ||
+                connectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI).getState() == NetworkInfo.State.CONNECTED) {
+            //we are connected to a network
+            connected = true;
+        }
+        else
+            connected = false;
+        return connected;
     }
 
     @Override
@@ -249,11 +401,50 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
 //            }
 //            builder.setMessage(location_string);
 //            builder.create().show();
-            ((MainActivity) getActivity()).openMap();
+            if(isConnected()) {
+                ((MainActivity) getActivity()).openMap();
+            }
+            else {
+                LinearLayout.LayoutParams params = (LinearLayout.LayoutParams)mapView.getLayoutParams();
+                if(mapView.getVisibility() == View.VISIBLE) {
+                    params.height=1;
+                    params.width=1;
+                    mapView.setLayoutParams(params);
+                    mapView.setVisibility(View.INVISIBLE);
+                } else {
+                    hideKeyboard(getActivity());
+                    params.height = LinearLayout.LayoutParams.MATCH_PARENT;
+                    params.width = LinearLayout.LayoutParams.MATCH_PARENT;
+                    mapView.setLayoutParams(params);
+                    mapView.setVisibility(View.VISIBLE);
+                }
+            }
             return true;
         } else {
             return super.onOptionsItemSelected(item);
         }
+    }
+
+    public static void hideKeyboard(Activity activity) {
+        InputMethodManager imm = (InputMethodManager) activity.getSystemService(Activity.INPUT_METHOD_SERVICE);
+        //Find the currently focused view, so we can grab the correct window token from it.
+        View view = activity.getCurrentFocus();
+        //If no view currently has focus, create a new one, just so we can grab a window token from it
+        if (view == null) {
+            view = new View(activity);
+        }
+        imm.hideSoftInputFromWindow(view.getWindowToken(), 0);
+    }
+
+    public static void revealKeyboard(Activity activity) {
+        InputMethodManager imm = (InputMethodManager) activity.getSystemService(Activity.INPUT_METHOD_SERVICE);
+        //Find the currently focused view, so we can grab the correct window token from it.
+        View view = activity.getCurrentFocus();
+        //If no view currently has focus, create a new one, just so we can grab a window token from it
+        if (view == null) {
+            view = new View(activity);
+        }
+        imm.hideSoftInputFromWindow(view.getWindowToken(), 0);
     }
 
     private void updateCenterLocation() {
@@ -271,11 +462,17 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         //Give the Center a dummy value for its id
         Loc loc = new Loc("-1",total_lat/count, total_lon/count);
         locations.put("Center", loc);
+        if(null != mapView) {
+            mapView.updateLocation(loc.id, loc.lat, loc.lon);
+        }
     }
 
     private void updateLocations(Loc loc) {
         locations.put(loc.id + "", loc);
         updateCenterLocation();
+        if(null != mapView) {
+            mapView.updateLocation(loc.id, loc.lat, loc.lon);
+        }
     }
 
     public void sendGPS(double lat, double lon)
@@ -285,8 +482,9 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         }
         try {
             Loc loc = new Loc(myID, lat, lon);
+            updateLocations(loc);
             locations.put("My location", loc);
-            updateCenterLocation();
+            //updateCenterLocation();
             String str = begginningGPS + myID + "," + lat + "," + lon + endingGPS;
             SpannableStringBuilder spn = new SpannableStringBuilder(str+'\n');
             spn.setSpan(new ForegroundColorSpan(getResources().getColor(R.color.colorSendText)), 0, spn.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
@@ -320,17 +518,27 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         try {
             //Temporary way to save a name so others can see who is sending it.
             //Make this saveable and put in the opening of the app for the first time.
-            AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
-            builder.setTitle("Enter your name below.");
-            final EditText input = new EditText(getContext());
-            builder.setView(input);
-            builder.setPositiveButton("Ok", new DialogInterface.OnClickListener() {
-                public void onClick(DialogInterface dialog, int whichButton) {
-                    myID = input.getText().toString();
-                    // Do something with value!
-                }
-            });
-            builder.show();
+            SharedPreferences sharedPreferences = getActivity().getSharedPreferences(SHARED_PREFS,MODE_PRIVATE);
+            String name = sharedPreferences.getString(NAME, "");
+            if(name.equals("")) {
+                AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
+                builder.setTitle("Enter your name below.");
+                final EditText input = new EditText(getContext());
+                builder.setView(input);
+                builder.setPositiveButton("Ok", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int whichButton) {
+                        myID = input.getText().toString();
+                        // Do something with value!
+                        SharedPreferences.Editor editor = sharedPreferences.edit();
+                        editor.putString(NAME,myID);
+                        editor.commit();
+                    }
+                });
+                builder.show();
+
+            } else {
+                myID = name;
+            }
             BluetoothAdapter bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
             BluetoothDevice device = bluetoothAdapter.getRemoteDevice(deviceAddress);
             String deviceName = device.getName() != null ? device.getName() : device.getAddress();
@@ -364,6 +572,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         retBytes[0] = target;
         retBytes[1] = ' ';
         System.arraycopy(temp, 0, retBytes, 2, temp.length);*/
+        confirmStrings.put(originalMessage, false);
         return temp;
     }
 
@@ -391,13 +600,17 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
                 String removal = begginningGPS + location_data + endingGPS;
                 gps_data = gps_data.replace(removal,"");
             }
-            if(receive_sem.tryAcquire()) {
+            try {
+            if(receive_sem.tryAcquire(1, TimeUnit.SECONDS)) {
                 System.arraycopy(gps_data.getBytes(), 0, receivedMessage, 0, gps_data.getBytes().length);
                 receive_sem.release();
                 receivedBytesIndex = gps_data.length();
             }
             else {
                 receivedBytesIndex = 0;
+                receive_sem.release();
+            } } catch(Exception e) {
+                receive_sem.release();
             }
             if(!myID.equals(gps_id))
             {
@@ -436,20 +649,27 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
                 String removal = messageStart + middle + messageEnd;
                 gps_data = gps_data.replace(removal,"");
             }
-            if(receive_sem.tryAcquire()) {
+            try {
+            if(receive_sem.tryAcquire(1, TimeUnit.SECONDS)) {
                 System.arraycopy(gps_data.getBytes(), 0, receivedMessage, 0, gps_data.getBytes().length);
                 receive_sem.release();
                 receivedBytesIndex = gps_data.length();
             }
             else {
                 receivedBytesIndex = 0;
+                receive_sem.release();
+            } } catch (Exception e) {
+                receive_sem.release();
             }
 
             if(!sender.contains(myID) && !target.equals("" + myID)) {
                 forwardMessage((messageStart + original_message.replace(sender, sender + "," + myID) + messageEnd).getBytes());
             }
+            else if(sender.contains(myID)) {
+                confirmStrings.put(new String(data), true);
+            }
             if((target.equals("" + myID) || target.equals(allTargets)) && checkSender(sender.split(",")[0])) {
-                return decryptedString;
+                return decryptedString.trim() + "\n"; //make sure to append exactly one newline
             }
         }
         return null;
@@ -487,6 +707,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             return;
         }
         try {
+
             SpannableStringBuilder spn = new SpannableStringBuilder(str+'\n');
             spn.setSpan(new ForegroundColorSpan(getResources().getColor(R.color.colorSendText)), 0, spn.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
             receiveText.append(spn);
@@ -505,9 +726,13 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     }
 
     private void receive(byte[] data) {
-        if(receive_sem.tryAcquire()) {
-            System.arraycopy(data, 0, receivedBytes, receivedBytesIndex, data.length);
-            receivedBytesIndex += data.length;
+        try {
+            if (receive_sem.tryAcquire(1, TimeUnit.SECONDS)) {
+                System.arraycopy(data, 0, receivedBytes, receivedBytesIndex, data.length);
+                receivedBytesIndex += data.length;
+                receive_sem.release();
+            }
+        } catch(Exception e) {
             receive_sem.release();
         }
         byte[] encryptedData = new byte[receivedBytesIndex];
