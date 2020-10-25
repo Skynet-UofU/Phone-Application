@@ -142,6 +142,7 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
                                     if(val > 5) {
                                         counts.remove(entry.getKey());
                                         confirmStrings.put(entry.getKey(), true);
+                                        status("String: '" + entry.getKey() + "' was not confirmed as received in network");
                                     }
                                 } else {
                                     counts.put(entry.getKey(), 1);
@@ -152,6 +153,7 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
                                 confirmStrings.remove(entry.getKey());
                             }
                         }
+
                         checkConfirmation.sleep(1000);
                     } catch (Exception e) {
 
@@ -602,12 +604,12 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
             }
             try {
             if(receive_sem.tryAcquire(1, TimeUnit.SECONDS)) {
-                System.arraycopy(gps_data.getBytes(), 0, receivedMessage, 0, gps_data.getBytes().length);
-                receive_sem.release();
+                System.arraycopy(gps_data.getBytes(), 0, receivedBytes, 0, gps_data.getBytes().length);
                 receivedBytesIndex = gps_data.length();
+                receive_sem.release();
             }
             else {
-                receivedBytesIndex = 0;
+                //receivedBytesIndex = 0;
                 receive_sem.release();
             } } catch(Exception e) {
                 receive_sem.release();
@@ -651,12 +653,12 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
             }
             try {
             if(receive_sem.tryAcquire(1, TimeUnit.SECONDS)) {
-                System.arraycopy(gps_data.getBytes(), 0, receivedMessage, 0, gps_data.getBytes().length);
-                receive_sem.release();
+                System.arraycopy(gps_data.getBytes(), 0, receivedBytes, 0, gps_data.getBytes().length);
                 receivedBytesIndex = gps_data.length();
+                receive_sem.release();
             }
             else {
-                receivedBytesIndex = 0;
+                //receivedBytesIndex = 0;
                 receive_sem.release();
             } } catch (Exception e) {
                 receive_sem.release();
@@ -668,7 +670,7 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
             else if(sender.contains(myID)) {
                 confirmStrings.put(new String(data), true);
             }
-            if((target.equals("" + myID) || target.equals(allTargets)) && checkSender(sender.split(",")[0])) {
+            if((target.equals("" + myID) || target.equals(allTargets)) && checkSender(sender.split(",")[0]) && !sender.contains(myID)) {
                 return decryptedString.trim() + "\n"; //make sure to append exactly one newline
             }
         }
@@ -730,6 +732,8 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
             if (receive_sem.tryAcquire(1, TimeUnit.SECONDS)) {
                 System.arraycopy(data, 0, receivedBytes, receivedBytesIndex, data.length);
                 receivedBytesIndex += data.length;
+                receive_sem.release();
+            } else {
                 receive_sem.release();
             }
         } catch(Exception e) {
