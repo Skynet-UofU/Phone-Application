@@ -135,14 +135,14 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
                         for(Hashtable.Entry<String, Boolean> entry : confirmStrings.entrySet()) {
                             if(!entry.getValue()) {
                                 //Note this isn't amazing because the target could change within the 5 seconds. Find a better solution if we keep this.
-                                forwardMessage(sendProtocol(entry.getKey(), myTarget));
+                                forwardMessage(entry.getKey().getBytes());
                                 if(counts.containsKey(entry.getKey())) {
                                     int val = counts.get(entry.getKey()) + 1;
                                     counts.put(entry.getKey(), val);
                                     if(val > 5) {
                                         counts.remove(entry.getKey());
                                         confirmStrings.put(entry.getKey(), true);
-                                        status("String: '" + entry.getKey() + "' was not confirmed as received in network");
+                                        status("String: '" + get_message(entry.getKey()) + "' was not confirmed as received in network");
                                     }
                                 } else {
                                     counts.put(entry.getKey(), 1);
@@ -455,14 +455,14 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
         double total_lon = 0;
         for(String key : keys)
         {
-            if(!key.equals("Center")) {
+            if(!key.equals("Center") && !key.equals("My location")) {
                 total_lat += locations.get(key).lat;
                 total_lon += locations.get(key).lon;
             }
         }
-        int count = keys.size() - (keys.contains("Center") ? 1 : 0);
+        int count = keys.size() - (keys.contains("Center") ? 1 : 0) - (keys.contains("My location") ? 1 : 0);
         //Give the Center a dummy value for its id
-        Loc loc = new Loc("-1",total_lat/count, total_lon/count);
+        Loc loc = new Loc("Center",total_lat/count, total_lon/count);
         locations.put("Center", loc);
         if(null != mapView) {
             mapView.updateLocation(loc.id, loc.lat, loc.lon);
@@ -574,7 +574,7 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
         retBytes[0] = target;
         retBytes[1] = ' ';
         System.arraycopy(temp, 0, retBytes, 2, temp.length);*/
-        confirmStrings.put(originalMessage, false);
+        confirmStrings.put(appendedTarget, false);
         return temp;
     }
 
@@ -664,17 +664,37 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
                 receive_sem.release();
             }
 
-            if(!sender.contains(myID) && !target.equals("" + myID)) {
-                forwardMessage((messageStart + original_message.replace(sender, sender + "," + myID) + messageEnd).getBytes());
+            String persons = sender.split("/")[0];
+            if(!persons.contains(myID)) { // Removed  && !target.equals("" + myID) because we now look for confirmation that messages were received.
+                forwardMessage((messageStart + original_message.replace(persons, persons + "," + myID) + messageEnd).getBytes());
             }
-            else if(sender.contains(myID)) {
-                confirmStrings.put(new String(data), true);
+            else if(isFirstID(myID, persons)) {
+                confirmStrings.put(recreateOriginalMessage(message, sender.split("/")[1],target), true);
             }
             if((target.equals("" + myID) || target.equals(allTargets)) && checkSender(sender.split(",")[0]) && !sender.contains(myID)) {
                 return decryptedString.trim() + "\n"; //make sure to append exactly one newline
             }
         }
         return null;
+    }
+
+    private String get_message(String withPattern) {
+        String message = withPattern.replace(messageStart, "").replace(messageEnd,"");
+        //String ts = message.substring(0, message.indexOf(':')).split("/")[1];
+        String afterSender = message.substring(message.indexOf(':') + 1);
+        //String target = afterSender.substring(0, afterSender.indexOf(':'));
+        message = afterSender.substring(afterSender.indexOf(':') + 1);
+        return message; // + "with timestamp: " + ts; // or I can specify who it was sent to
+    }
+
+    private boolean isFirstID(String id, String senders) {
+        return id.equals(senders.split(",")[0]);
+    }
+
+    private String recreateOriginalMessage(String originalMessage, String ts, String target) {
+        return messageStart + myID + "/" + ts +  ":" + target + ":" +  originalMessage + messageEnd;
+        //message
+        //return message.split(",")[0];
     }
 
     private boolean checkSender(String sender) {

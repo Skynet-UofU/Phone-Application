@@ -122,8 +122,8 @@ public class MapView extends View {
             }
             i++;
         }
-        double latDistance = 0.001;
-        double lonDistance = 0.001;
+        double latDistance = 0.00001;
+        double lonDistance = 0.00001;
         if(latDistance < maxLat - minLat) {
             latDistance = maxLat - minLat;
         }
@@ -156,5 +156,6 @@ public class MapView extends View {
             locations = new Hashtable<String, Loc>();
         }
         locations.put(id + "", new Loc(id, lat, lon));
+        invalidate();
     }
 }
