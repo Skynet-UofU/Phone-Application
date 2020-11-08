@@ -614,9 +614,10 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
             } } catch(Exception e) {
                 receive_sem.release();
             }
-            if(!myID.equals(gps_id))
+            // Updated to have a mesh network fix
+            if(!gps_id.contains(myID))
             {
-                forwardMessage((begginningGPS + location_data + endingGPS).getBytes());
+                forwardMessage((begginningGPS + location_data.replace(gps_id, gps_id + "/" + myID) + endingGPS).getBytes());
             }
             return "";
         }
