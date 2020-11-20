@@ -74,6 +74,8 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
 
     private static String begginningGPS = "GPS_DATA:";
     private static String endingGPS = "Done:";
+    private static String begginningDrone = "DRONE_CMD:";
+    private static String endingDrone = "DRONE_END";
     private static String messageEnd = "End:";
     private static String messageStart = "START:";
     private static int MAXKEPT = 1000;
@@ -259,6 +261,7 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
         View view = inflater.inflate(R.layout.fragment_terminal, container, false);
         mapView = (MapView) view.findViewById(R.id.mapView);
         mapView.setVisibility(View.INVISIBLE);
+        mapView.setDroneCommand(this);
         receiveText = view.findViewById(R.id.receive_text);
         receiveText.setTextColor(getResources().getColor(R.color.colorRecieveText)); // set as default color to reduce number of spans
         //loadText();
@@ -488,8 +491,6 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
             locations.put("My location", loc);
             //updateCenterLocation();
             String str = begginningGPS + myID + "," + lat + "," + lon + endingGPS;
-            SpannableStringBuilder spn = new SpannableStringBuilder(str+'\n');
-            spn.setSpan(new ForegroundColorSpan(getResources().getColor(R.color.colorSendText)), 0, spn.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
 //            byte[] data = (str + newline).getBytes();
             //byte[] data = aes256Class.makeAes((str).getBytes(), Cipher.ENCRYPT_MODE);
             byte[] data = str.getBytes();
@@ -501,6 +502,24 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
             send_sem.release();
         }
     }
+
+    public void sendDroneCommand(double lat, double lon)
+    {
+        if(connected != Connected.True) {
+            return;
+        }
+        try {
+            String str = begginningDrone + myID + ";" + lat + ":" + lon + endingDrone;
+            byte[] data = str.getBytes();
+            send_sem.acquire();
+            socket.write(data);
+            send_sem.release();
+        } catch (Exception e) {
+            onSerialIoError(e);
+            send_sem.release();
+        }
+    }
+
 
     private void forwardMessage(byte[] message) {
         try {
@@ -584,6 +603,8 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
         String gps_data = new String(possible_gps);
         Pattern gps_pattern = Pattern.compile(begginningGPS +"(.*?)" + endingGPS);
         Matcher matcher = gps_pattern.matcher(gps_data);
+        Pattern drone_pattern = Pattern.compile(begginningDrone +"(.*?)" + endingDrone);
+        Matcher drone_matcher = drone_pattern.matcher(gps_data);
         Pattern message_pattern = Pattern.compile(messageStart + "(.*?)" + messageEnd);
         Matcher message_matcher = message_pattern.matcher(gps_data);
         if(matcher.find())
@@ -591,6 +612,9 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
             String location_data = matcher.group(1);
             String[] words = location_data.split(",");
             String gps_id = words[0];
+            if(gps_id.contains("/")) {
+                gps_id = gps_id.split("/")[0];
+            }
             double lat = Double.parseDouble(words[1]);
             double lon = Double.parseDouble(words[2]);
             Loc loc = new Loc(gps_id, lat, lon);
@@ -618,6 +642,37 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
             if(!gps_id.contains(myID))
             {
                 forwardMessage((begginningGPS + location_data.replace(gps_id, gps_id + "/" + myID) + endingGPS).getBytes());
+            }
+            return "";
+        }
+        else if(drone_matcher.find())
+        {
+            String location_data = drone_matcher.group(1);
+            String[] words = location_data.split(";");
+            String drone_id = words[0];
+            //remove the processed data
+            if((drone_matcher = drone_pattern.matcher(gps_data)).find())
+            {
+                location_data = drone_matcher.group(1);
+                String removal = begginningDrone + location_data + endingDrone;
+                gps_data = gps_data.replace(removal,"");
+            }
+            try {
+                if(receive_sem.tryAcquire(1, TimeUnit.SECONDS)) {
+                    System.arraycopy(gps_data.getBytes(), 0, receivedBytes, 0, gps_data.getBytes().length);
+                    receivedBytesIndex = gps_data.length();
+                    receive_sem.release();
+                }
+                else {
+                    //receivedBytesIndex = 0;
+                    receive_sem.release();
+                } } catch(Exception e) {
+                receive_sem.release();
+            }
+            // Updated to have a mesh network fix
+            if(!drone_id.contains(myID))
+            {
+                forwardMessage((begginningDrone + location_data.replace(drone_id, drone_id + "/" + myID) + endingDrone).getBytes());
             }
             return "";
         }

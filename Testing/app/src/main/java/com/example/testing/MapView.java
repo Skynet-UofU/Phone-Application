@@ -1,6 +1,10 @@
 package com.example.testing;
 
+import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.ContextWrapper;
+import android.content.DialogInterface;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -10,6 +14,7 @@ import android.graphics.Typeface;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
+import android.widget.EditText;
 
 import java.util.ArrayList;
 import java.util.Hashtable;
@@ -53,6 +58,8 @@ public class MapView extends View {
     private Paint textPaint;
     private float mX, mY;
     private static final float TOLERANCE = 5;
+    private float canvasWidth;
+    private float canvasHeight;
 
     public void updateCanvas(Canvas canvas) {
         mCanvas = canvas;
@@ -84,6 +91,8 @@ public class MapView extends View {
     protected void onDraw(Canvas canvas) {
 
         super.onDraw(canvas);
+        canvasWidth = canvas.getWidth();
+        canvasHeight = canvas.getHeight();
         drawPoints(canvas);
     }
 
@@ -148,7 +157,15 @@ public class MapView extends View {
                 mapCanvas.drawPoint(relLon, relLat, mPaint);
             }
         }
+        m_minLat = minLat;
+        m_maxLat = maxLat;
+        m_minLon = minLon;
+        m_maxLon = maxLon;
     }
+    private double m_minLat;
+    private double m_maxLat;
+    private double m_minLon;
+    private double m_maxLon;
 
 
     public void updateLocation(String id, double lat, double lon) {
@@ -157,5 +174,62 @@ public class MapView extends View {
         }
         locations.put(id + "", new Loc(id, lat, lon));
         invalidate();
+    }
+
+    private double convertXtoLon(float x) {
+        double lon = (x / canvasWidth) * (m_maxLon - m_minLon) + m_minLon;
+        return lon;
+    }
+
+    private double convertYtoLat(float y) {
+        double lat = (y / canvasHeight) * (m_maxLat - m_minLat) + m_minLat;
+        return lat;
+    }
+
+    private Activity getActivity() {
+        Context context = getContext();
+        while (context instanceof ContextWrapper) {
+            if (context instanceof Activity) {
+                return (Activity)context;
+            }
+            context = ((ContextWrapper)context).getBaseContext();
+        }
+        return null;
+    }
+
+    private TerminalFragment m_tf;
+    public void setDroneCommand(TerminalFragment tf) {
+        m_tf = tf;
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent e) {
+        float x = e.getX();
+        float y = e.getY();
+        switch (e.getAction()) {
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_BUTTON_RELEASE:
+                double lon = convertXtoLon(x);
+                double lat = convertYtoLat(y);
+                //Do an AlertDialog or something like that to see if they want to send the drone to this address.
+                AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
+                builder.setTitle("Send drone.");
+                builder.setMessage("Send the drone to lon: " + lon + " lat: " + lat);
+                //builder.setView();
+                builder.setPositiveButton("Ok", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int whichButton) {
+                        //Send a drone command through the antenna. May need to figure out the best way to do this
+                        m_tf.sendDroneCommand(lat, lon);
+                    }
+                });
+                builder.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int whichButton) {
+                        //ignore the command
+                    }
+                });
+                builder.show();
+                break;
+        }
+        return true;
     }
 }
