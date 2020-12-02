@@ -4,6 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="#FFFFFF"
     tools:context=".MainActivity">
 
 
@@ -14,17 +15,61 @@
         android:name="com.google.android.gms.maps.SupportMapFragment"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        tools:context="com.example.testing.Map"
-        />
+        tools:context="com.example.testing.Map" />
 
-    <!--    <ImageButton-->
-    <!--        android:id="@+id/currLocBtn"-->
-    <!--        android:layout_width="52dp"-->
-    <!--        android:layout_height="55dp"-->
-    <!--        android:layout_marginEnd="16dp"-->
-    <!--        android:layout_marginBottom="16dp"-->
-    <!--        app:layout_constraintBottom_toBottomOf="parent"-->
-    <!--        app:layout_constraintEnd_toEndOf="parent"-->
-    <!--        app:srcCompat="@android:drawable/ic_menu_compass" />-->
+    <com.exlyo.gmfmt.FloatingMarkerTitlesOverlay
+        android:id="@+id/map_floating_markers_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <ImageButton
+        android:id="@+id/centerDroneBtn"
+        android:layout_width="52dp"
+        android:layout_height="55dp"
+        android:layout_marginRight="16dp"
+        android:layout_marginBottom="5dp"
+        android:background="#FFFFFF"
+        android:tint="#3F51B5"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:srcCompat="@android:drawable/ic_popup_sync" />
+
+    <ImageButton
+        android:id="@+id/takeoffDroneBtn"
+        android:layout_width="52dp"
+        android:layout_height="55dp"
+        android:layout_marginBottom="5dp"
+        android:background="#FFFFFF"
+        android:tint="#3F51B5"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/centerDroneBtn"
+        app:srcCompat="@android:drawable/stat_sys_upload" />
+
+    <ImageButton
+        android:id="@+id/rthDroneBtn"
+        android:layout_width="52dp"
+        android:layout_height="55dp"
+        android:layout_marginBottom="5dp"
+        android:background="#FFFFFF"
+        android:cropToPadding="true"
+        android:padding="12dp"
+        android:scaleType="fitCenter"
+        android:tint="#3F51B5"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/takeoffDroneBtn"
+        app:srcCompat="@drawable/home"
+        tools:ignore="VectorDrawableCompat" />
+
+    <ImageButton
+        android:id="@+id/landDroneBtn"
+        android:layout_width="62dp"
+        android:layout_height="55dp"
+        android:layout_marginRight="0dp"
+        android:layout_marginBottom="5dp"
+        android:background="#FFFFFF"
+        android:tint="#3F51B5"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/rthDroneBtn"
+        app:srcCompat="@android:drawable/ic_dialog_alert" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

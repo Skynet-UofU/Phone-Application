@@ -7,6 +7,8 @@ import androidx.core.content.ContextCompat;
 import androidx.fragment.app.FragmentManager;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
+import android.app.LocalActivityManager;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothServerSocket;
@@ -16,6 +18,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
@@ -25,10 +28,19 @@ import android.util.Log;
 import android.view.View;
 import android.widget.TextView;
 
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.maps.CameraUpdateFactory;
+import com.google.android.gms.maps.GoogleMap;
+import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.LatLng;
+
 import java.io.IOException;
 import java.util.UUID;
 
 import static android.content.ContentValues.TAG;
+import static com.example.testing.TerminalFragment.NAME;
+import static com.example.testing.TerminalFragment.SHARED_PREFS;
 
 public class MainActivity extends AppCompatActivity implements FragmentManager.OnBackStackChangedListener {
 
@@ -42,6 +54,7 @@ public class MainActivity extends AppCompatActivity implements FragmentManager.O
     private LocationManager locationManager;
     private LocationListener locationListener;
     private DevicesFragment devicesFragment;
+    private Intent googleMapsIntent;
 
     @Override
     public void onBackStackChanged() {
@@ -178,7 +191,7 @@ public class MainActivity extends AppCompatActivity implements FragmentManager.O
 
     @Override
     public void onRequestPermissionsResult(int requestCode,
-                                       String[] permissions, int[] grantResults)
+                                           String[] permissions, int[] grantResults)
     {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         switch(requestCode)
@@ -283,10 +296,33 @@ public class MainActivity extends AppCompatActivity implements FragmentManager.O
         }
     };
 
+    @SuppressLint("MissingPermission")
     public void openMap() {
-        setContentView(R.layout.map_view);
+        //setContentView(R.layout.map_view);
+        FusedLocationProviderClient locationClient = LocationServices.getFusedLocationProviderClient(this);
+        locationClient.getLastLocation().addOnSuccessListener(this, location -> {
+            SharedPreferences sharedPreferences = this.getSharedPreferences(SHARED_PREFS,MODE_PRIVATE);
+            String name = sharedPreferences.getString(NAME, "");
+            if(googleMapsIntent == null)
+                googleMapsIntent = new Intent(MainActivity.this, GoogleMapView.class);
+            if(location != null) {
+                googleMapsIntent.putExtra("loc", "{\"id\":" + name + ", \"lat\":" + location.getLatitude() + ", \"lon\":" + location.getLongitude() + "}");
+                //updateGoogleMapLoc(name, location.getLatitude(), location.getLongitude());
+                sendGPS(location.getLatitude(), location.getLongitude());
+            }
+            googleMapsIntent.setAction(Intent.ACTION_MAIN);
+            googleMapsIntent.addCategory(Intent.CATEGORY_HOME);
+            startActivity(googleMapsIntent);
+        });
     }
 
+    public void updateGoogleMapLoc(String id, double lat, double lon) {
+        if(googleMapsIntent != null && GoogleMapView.isActivityVisible()) {
+            googleMapsIntent.putExtra("loc", "{\"id\":" + id + ", \"lat\":" + lat + ", \"lon\":" + lon + "}");
+            googleMapsIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(googleMapsIntent);
+        }
+    }
 
     private class AcceptThread extends Thread {
         private final BluetoothServerSocket mmServerSocket;

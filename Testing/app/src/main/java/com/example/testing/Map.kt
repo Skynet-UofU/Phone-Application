@@ -7,6 +7,8 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Bundle
 import android.util.Log
+import android.widget.Button
+import android.widget.ImageButton
 
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.gms.maps.CameraUpdateFactory
@@ -22,6 +24,7 @@ class Map : AppCompatActivity(), OnMapReadyCallback {
     private var currentLongitude = 0.0
     var locationManager: LocationManager? = null
     lateinit var locationListener: LocationListener
+    private lateinit var centerBtn: ImageButton
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -29,13 +32,15 @@ class Map : AppCompatActivity(), OnMapReadyCallback {
         var mapFragment = supportFragmentManager
                 .findFragmentById(R.id.map) as SupportMapFragment
         mapFragment.getMapAsync(this)
+//        centerBtn = findViewById(R.id.currLocBtn)
+//        centerBtn.setOnClickListener{ v -> centerLoc() }
 
         //location setup
         locationManager = getSystemService(LOCATION_SERVICE) as LocationManager
         locationListener = object : LocationListener {
             override fun onLocationChanged(location: Location) {
                 if(location != null) { val latLng = LatLng(location.latitude, location.longitude)
-                    map?.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 13F))
+                    map?.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 18F))
                 }
             }
 

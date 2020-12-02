@@ -57,6 +57,8 @@ import static android.content.Context.MODE_PRIVATE;
 
 public class TerminalFragment extends Fragment implements  ServiceConnection, SerialListener {
 
+    private boolean openingMap;
+
     private class Loc {
 
         private double lat;
@@ -74,20 +76,21 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
 
     private static String begginningGPS = "GPS_DATA:";
     private static String endingGPS = "Done:";
-    private static String begginningDrone = "DRONE_CMD";
-    private static String goto_Drone = "_GOTO;";
-    private static String takeoff_Drone = "_TAKEOFF;";
-    private static String rth_Drone = "_RTH;";
-    private static String land_Drone = "_LAND;";
-    private static String endingDrone = "DRONE_END";
+    public static String begginningDrone = "DRONE_CMD";
+    public static String goto_Drone = "_GOTO;";
+    public static String takeoff_Drone = "_TAKEOFF;";
+    public static String rth_Drone = "_RTH;";
+    public static String land_Drone = "_LAND;";
+    public static String endingDrone = "DRONE_END";
     private static String messageEnd = "End:";
     private static String messageStart = "START:";
     private static int MAXKEPT = 1000;
 
     private MapView mapView;
+    private GoogleMapView googleMap;
 
-    private Semaphore send_sem = new Semaphore(1);
-    private Semaphore receive_sem = new Semaphore(1);
+    public static Semaphore send_sem = new Semaphore(1);
+    public static Semaphore receive_sem = new Semaphore(1);
 
     private enum Connected { False, Pending, True }
 
@@ -96,7 +99,7 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
 
     private TextView receiveText;
 
-    private SerialSocket socket;
+    public static SerialSocket socket;
     private SerialService service;
     private boolean initialStart = true;
     private Connected connected = Connected.False;
@@ -208,6 +211,7 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
     @Override
     public void onStart() {
         super.onStart();
+        openingMap = false;
         if(service != null)
             service.attach(this);
         else
@@ -216,8 +220,14 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
 
     @Override
     public void onStop() {
-        if(service != null && !getActivity().isChangingConfigurations())
-            service.detach();
+        if(!openingMap) {
+            if (service != null && !getActivity().isChangingConfigurations()) {
+                service.detach();
+            }
+        }
+        else {
+            openingMap = false;
+        }
         super.onStop();
     }
 
@@ -225,6 +235,7 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
     @Override
     public void onAttach(Activity activity) {
         super.onAttach(activity);
+        openingMap = false;
         getActivity().bindService(new Intent(getActivity(), SerialService.class), this, Context.BIND_AUTO_CREATE);
     }
 
@@ -241,6 +252,7 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
             initialStart = false;
             getActivity().runOnUiThread(this::connect);
         }
+        openingMap = false;
     }
 
     @Override
@@ -257,12 +269,14 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
         service = null;
     }
 
+    private View view;
+
     /*
      * UI
      */
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
-        View view = inflater.inflate(R.layout.fragment_terminal, container, false);
+        view = inflater.inflate(R.layout.fragment_terminal, container, false);
         mapView = (MapView) view.findViewById(R.id.mapView);
         mapView.setVisibility(View.INVISIBLE);
         mapView.setDroneCommand(this);
@@ -273,7 +287,7 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
         sendText = view.findViewById(R.id.send_text);
         View sendBtn = view.findViewById(R.id.send_btn);
         sendBtn.setOnClickListener(v -> send(sendText.getText().toString()));
-
+        openingMap = false;
 
         Button test_one_button = (Button) view.findViewById(R.id.test_1);
         test_one_button.setOnClickListener(new View.OnClickListener()
@@ -365,7 +379,7 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
     public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
         inflater.inflate(R.menu.menu_terminal, menu);
     }
-    
+
     private boolean isConnected() {
         boolean connected;
         ConnectivityManager connectivityManager = (ConnectivityManager)getActivity().getSystemService(Context.CONNECTIVITY_SERVICE);
@@ -406,21 +420,10 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
             });
             builder.create().show();
             return true;
-        } /*else if(id == R.id.messageIndividual) {
-
-        } */else if( id == R.id.map) {
-//            AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
-//            builder.setTitle("Locations");
-//            String location_string = "";
-//            Set<String> keys = locations.keySet();
-//            for(String key : keys)
-//            {
-//                location_string += key + ": " + locations.get(key).lat + ", " + locations.get(key).lon + "\r\n";
-//            }
-//            builder.setMessage(location_string);
-//            builder.create().show();
+        } else if( id == R.id.map) {
             if(isConnected()) {
                 ((MainActivity) getActivity()).openMap();
+                openingMap = true; // track if we are opening the map so we don't detach the service
             }
             else {
                 LinearLayout.LayoutParams params = (LinearLayout.LayoutParams)mapView.getLayoutParams();
@@ -483,6 +486,7 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
         if(null != mapView) {
             mapView.updateLocation(loc.id, loc.lat, loc.lon);
         }
+        ((MainActivity) getActivity()).updateGoogleMapLoc(loc.id, loc.lat, loc.lon);
     }
 
     private void updateLocations(Loc loc) {
@@ -491,6 +495,7 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
         if(null != mapView) {
             mapView.updateLocation(loc.id, loc.lat, loc.lon);
         }
+        ((MainActivity) getActivity()).updateGoogleMapLoc(loc.id, loc.lat, loc.lon);
     }
 
     public void sendGPS(double lat, double lon)
@@ -507,12 +512,12 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
 //            byte[] data = (str + newline).getBytes();
             //byte[] data = aes256Class.makeAes((str).getBytes(), Cipher.ENCRYPT_MODE);
             byte[] data = str.getBytes();
-            //send_sem.acquire();
-            //socket.write(data);
-            //send_sem.release();
+            send_sem.acquire();
+            socket.write(data);
+            send_sem.release();
         } catch (Exception e) {
             onSerialIoError(e);
-            //send_sem.release();
+            send_sem.release();
         }
     }
 
@@ -668,15 +673,15 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
                 gps_data = gps_data.replace(removal,"");
             }
             try {
-            if(receive_sem.tryAcquire(1, TimeUnit.SECONDS)) {
-                System.arraycopy(gps_data.getBytes(), 0, receivedBytes, 0, gps_data.getBytes().length);
-                receivedBytesIndex = gps_data.length();
-                receive_sem.release();
-            }
-            else {
-                //receivedBytesIndex = 0;
-                receive_sem.release();
-            } } catch(Exception e) {
+                if(receive_sem.tryAcquire(1, TimeUnit.SECONDS)) {
+                    System.arraycopy(gps_data.getBytes(), 0, receivedBytes, 0, gps_data.getBytes().length);
+                    receivedBytesIndex = gps_data.length();
+                    receive_sem.release();
+                }
+                else {
+                    //receivedBytesIndex = 0;
+                    receive_sem.release();
+                } } catch(Exception e) {
                 receive_sem.release();
             }
             // Updated to have a mesh network fix
@@ -737,39 +742,58 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
             //System.arraycopy(receivedMessage, 2, data, 0, data.length);
             //non-encrypted code done
 
-            byte[] data = message.getBytes();
-            String decryptedString = sender.split("/")[0] + ": " + new String(data);
-            //TODO fix the sendProtocol so it doesn't do this to make comparisons easier
-            //String changeTarget = "" + target;
-            //remove the processed data
-            if((message_matcher = message_pattern.matcher(gps_data)).find())
-            {
-                String middle = message_matcher.group(1);
-                String removal = messageStart + middle + messageEnd;
-                gps_data = gps_data.replace(removal,"");
-            }
-            try {
-            if(receive_sem.tryAcquire(1, TimeUnit.SECONDS)) {
-                System.arraycopy(gps_data.getBytes(), 0, receivedBytes, 0, gps_data.getBytes().length);
-                receivedBytesIndex = gps_data.length();
-                receive_sem.release();
-            }
-            else {
-                //receivedBytesIndex = 0;
-                receive_sem.release();
-            } } catch (Exception e) {
-                receive_sem.release();
-            }
+            // we need to make sure we didn't get a corrupted message before we do anything with it
+            if(!message.contains(":")) {
+                byte[] data = message.getBytes();
+                String decryptedString = sender.split("/")[0] + ": " + new String(data);
+                //TODO fix the sendProtocol so it doesn't do this to make comparisons easier
+                //String changeTarget = "" + target;
+                //remove the processed data
+                if((message_matcher = message_pattern.matcher(gps_data)).find())
+                {
+                    String middle = message_matcher.group(1);
+                    String removal = messageStart + middle + messageEnd;
+                    gps_data = gps_data.replace(removal,"");
+                }
+                try {
+                    if(receive_sem.tryAcquire(1, TimeUnit.SECONDS)) {
+                        System.arraycopy(gps_data.getBytes(), 0, receivedBytes, 0, gps_data.getBytes().length);
+                        receivedBytesIndex = gps_data.length();
+                        receive_sem.release();
+                    }
+                    else {
+                        //receivedBytesIndex = 0;
+                        receive_sem.release();
+                    } } catch (Exception e) {
+                    receive_sem.release();
+                }
 
-            String persons = sender.split("/")[0];
-            if(!persons.contains(myID)) { // Removed  && !target.equals("" + myID) because we now look for confirmation that messages were received.
-                forwardMessage((messageStart + original_message.replace(persons, persons + "," + myID) + messageEnd).getBytes());
+                String persons = sender.split("/")[0];
+                if(!persons.contains(myID)) { // Removed  && !target.equals("" + myID) because we now look for confirmation that messages were received.
+                    forwardMessage((messageStart + original_message.replace(persons, persons + "," + myID) + messageEnd).getBytes());
+                } else if (isFirstID(myID, persons)) {
+                    confirmStrings.put(recreateOriginalMessage(message, sender.split("/")[1], target), true);
+                }
+                // check to see if the string contains a semicolon, since that probably means we got a corrupted message
+                if (((target.equals("" + myID) || target.equals(allTargets)) && checkSender(sender.split(",")[0])) && !sender.contains(myID)) {
+                    return decryptedString.trim() + "\n"; //make sure to append exactly one newline
+                }
             }
-            else if(isFirstID(myID, persons)) {
-                confirmStrings.put(recreateOriginalMessage(message, sender.split("/")[1],target), true);
-            }
-            if((target.equals("" + myID) || target.equals(allTargets)) && checkSender(sender.split(",")[0]) && !sender.contains(myID)) {
-                return decryptedString.trim() + "\n"; //make sure to append exactly one newline
+        }
+        if(gps_data.contains("Done:")) {
+            int idx = gps_data.indexOf("Done:");
+            gps_data = (String) gps_data.subSequence(idx + 5, gps_data.length());
+            try {
+                if(receive_sem.tryAcquire(1, TimeUnit.SECONDS)) {
+                    System.arraycopy(gps_data.getBytes(), 0, receivedBytes, 0, gps_data.getBytes().length);
+                    receivedBytesIndex = gps_data.length();
+                    receive_sem.release();
+                }
+                else {
+                    //receivedBytesIndex = 0;
+                    receive_sem.release();
+                } } catch(Exception e) {
+                receive_sem.release();
             }
         }
         return null;
