@@ -12,6 +12,15 @@
         android:title="Clear"
         app:showAsAction="always" />
     <item
+        android:id="@+id/takeoff"
+        android:title="Drone Takeoff" />
+    <item
+        android:id="@+id/rth"
+        android:title="Drone Return" />
+    <item
+        android:id="@+id/land"
+        android:title="Drone Land" />
+    <item
         android:id="@+id/newline"
         android:title="Newline Mode" />
 </menu>

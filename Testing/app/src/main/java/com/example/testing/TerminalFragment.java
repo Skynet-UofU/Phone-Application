@@ -74,7 +74,11 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
 
     private static String begginningGPS = "GPS_DATA:";
     private static String endingGPS = "Done:";
-    private static String begginningDrone = "DRONE_CMD:";
+    private static String begginningDrone = "DRONE_CMD";
+    private static String goto_Drone = "_GOTO;";
+    private static String takeoff_Drone = "_TAKEOFF;";
+    private static String rth_Drone = "_RTH;";
+    private static String land_Drone = "_LAND;";
     private static String endingDrone = "DRONE_END";
     private static String messageEnd = "End:";
     private static String messageStart = "START:";
@@ -141,7 +145,7 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
                                 if(counts.containsKey(entry.getKey())) {
                                     int val = counts.get(entry.getKey()) + 1;
                                     counts.put(entry.getKey(), val);
-                                    if(val > 5) {
+                                    if(val > 15) {
                                         counts.remove(entry.getKey());
                                         confirmStrings.put(entry.getKey(), true);
                                         status("String: '" + get_message(entry.getKey()) + "' was not confirmed as received in network");
@@ -381,6 +385,15 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
         if (id == R.id.clear) {
             receiveText.setText("");
             return true;
+        } else if(id == R.id.takeoff) {
+            sendDroneCommand(0);
+            return true;
+        } else if(id == R.id.land) {
+            sendDroneCommand(2);
+            return true;
+        } else if(id == R.id.rth) {
+            sendDroneCommand(1);
+            return true;
         } else if (id ==R.id.newline) {
             String[] newlineNames = getResources().getStringArray(R.array.newline_names);
             String[] newlineValues = getResources().getStringArray(R.array.newline_values);
@@ -494,12 +507,12 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
 //            byte[] data = (str + newline).getBytes();
             //byte[] data = aes256Class.makeAes((str).getBytes(), Cipher.ENCRYPT_MODE);
             byte[] data = str.getBytes();
-            send_sem.acquire();
-            socket.write(data);
-            send_sem.release();
+            //send_sem.acquire();
+            //socket.write(data);
+            //send_sem.release();
         } catch (Exception e) {
             onSerialIoError(e);
-            send_sem.release();
+            //send_sem.release();
         }
     }
 
@@ -509,7 +522,7 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
             return;
         }
         try {
-            String str = begginningDrone + myID + ";" + lat + ":" + lon + endingDrone;
+            String str = begginningDrone + goto_Drone + myID + ";" + lat + ":" + lon + endingDrone;
             byte[] data = str.getBytes();
             send_sem.acquire();
             socket.write(data);
@@ -520,6 +533,34 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
         }
     }
 
+    public void sendDroneCommand(int type)
+    {
+        if(connected != Connected.True) {
+            return;
+        }
+        try {
+            String str = "";
+            switch(type) {
+                case 0:
+                    str = begginningDrone + takeoff_Drone + myID + ";" + endingDrone;
+                    break;
+                case 1:
+                    str = begginningDrone + rth_Drone + myID + ";" + endingDrone;
+                    break;
+                case 2:
+                    str = begginningDrone + land_Drone + myID + ";" + endingDrone;
+                    break;
+            }
+
+            byte[] data = str.getBytes();
+            send_sem.acquire();
+            socket.write(data);
+            send_sem.release();
+        } catch (Exception e) {
+            onSerialIoError(e);
+            send_sem.release();
+        }
+    }
 
     private void forwardMessage(byte[] message) {
         try {
@@ -649,7 +690,7 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
         {
             String location_data = drone_matcher.group(1);
             String[] words = location_data.split(";");
-            String drone_id = words[0];
+            String drone_id = words[1];
             //remove the processed data
             if((drone_matcher = drone_pattern.matcher(gps_data)).find())
             {
@@ -672,7 +713,7 @@ public class TerminalFragment extends Fragment implements  ServiceConnection, Se
             // Updated to have a mesh network fix
             if(!drone_id.contains(myID))
             {
-                forwardMessage((begginningDrone + location_data.replace(drone_id, drone_id + "/" + myID) + endingDrone).getBytes());
+                forwardMessage((begginningDrone + words[0] + ";" + location_data.replace(drone_id, drone_id + "/" + myID) + endingDrone).getBytes());
             }
             return "";
         }
