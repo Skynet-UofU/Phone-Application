@@ -50,7 +50,7 @@
             android:id="@+id/send_btn"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            app:srcCompat="@drawable/ic_send_white_24dp" />
+            app:srcCompat="@drawable/ic_send_white" />
     </LinearLayout>
 
 </LinearLayout>
